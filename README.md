@@ -1,10 +1,10 @@
 # CIFAR10-Speedrun
 
-This repository contains a script that trains a neural network to **94% accuracy on CIFAR-10 in just 2.015 seconds** on a single NVIDIA A100 GPU. This new record beats the previous best of 2.59 seconds.
+This repository contains a script that trains a neural network to **94% accuracy on CIFAR-10 in just 1.98 seconds** on a single NVIDIA A100 GPU. This new record beats the previous best of 2.59 seconds.
 
 | Script | Mean accuracy | Time |
 | :--- | :--- | :--- |
-| **`cifar10_speedrun.py`** | **94.01%** | **1.99s** |
+| **`cifar10_speedrun.py`** | **94.02%** | **1.98s** |
 | `airbench94_muon.py` | 94.01% | 2.59s |
 
 ## 🚀 Quickstart
@@ -12,7 +12,7 @@ This repository contains a script that trains a neural network to **94% accuracy
 To run the speedrun, simply clone the repository and run the Python script.
 
 ```bash
-git clone https://github.com/your-username/cifar10-speedrun.git
+git clone https://github.com/hiverge/cifar10-speedrun.git
 cd cifar10-speedrun
 pip install -r requirements.txt
 python cifar10_speedrun.py
@@ -46,3 +46,22 @@ Various hyperparameter changes (e.g., epochs, number of training steps, learning
 
 ### Selective test time augmentation
 Test time augmentation (TTA) is used to help improve the validation accuracy of a network by passing a number of augmented views of an input image through it then averaging the results. The Hive found that instead of performing TTA on every test image, we can retain the benefits of TTA while improving efficiency by only performing TTA on predictions which are below a certain confidence threshold, i.e., we first do a standard forwards pass of test images through the trained network, then perform TTA only on images whose predictions are below a set confidence threshold.
+
+
+## Timing details
+
+The timings logged in this repo were obtained by running on an NVIDIA A100 SXM4 80GB from [RunPod](https://www.runpod.io/), with Pytorch 2.4.0. 
+
+```
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 565.57.01              Driver Version: 565.57.01      CUDA Version: 12.7     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A100-SXM4-80GB          On  |   00000000:0F:00.0 Off |                    0 |
+| N/A   29C    P0             64W /  400W |       1MiB /  81920MiB |      0%      Default |
+|                                         |                        |             Disabled |
++-----------------------------------------+------------------------+----------------------+
+```
