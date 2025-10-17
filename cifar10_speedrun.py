@@ -321,12 +321,6 @@ class CifarLoader:
         self.batch_size = batch_size
         self.drop_last = train
         self.shuffle = train
-        # Pre-allocate pinned CPU memory for faster data transfer
-        self._cpu_buffer = torch.zeros(
-            self.images.shape,
-            dtype=torch.half,
-            device='cpu'
-        ).pin_memory().contiguous()
         # Pre-allocate indices tensor for better performance
         self._indices = torch.empty(len(self.images), dtype=torch.long, device="cuda")
 
@@ -624,8 +618,8 @@ def main(run, model):
         test_loader.images = torch.randn_like(
             test_loader.images, device=test_loader.images.device
         )
-    total_train_steps = ceil(7.59 * len(train_loader))
-    whiten_bias_train_steps = ceil(0.19 * len(train_loader))
+    total_train_steps = ceil(7.65 * len(train_loader))
+    whiten_bias_train_steps = ceil(0.2 * len(train_loader))
     model.reset()
     filter_params = [
         p for p in model.parameters() if len(p.shape) == 4 and p.requires_grad
