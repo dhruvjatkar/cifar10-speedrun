@@ -12,7 +12,7 @@ This repository contains a script that trains a neural network to **94% accuracy
 To run the speedrun, simply clone the repository and run the Python script.
 
 ```bash
-git clone https://github.com/your-username/cifar10-speedrun.git
+git clone https://github.com/hiverge/cifar10-speedrun.git
 cd cifar10-speedrun
 pip install -r requirements.txt
 python cifar10_speedrun.py
