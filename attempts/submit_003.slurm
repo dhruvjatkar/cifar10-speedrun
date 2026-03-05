@@ -5,6 +5,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=02:00:00
+#SBATCH --exclusive
 #SBATCH --output=attempts/logs/003_%j.out
 #SBATCH --error=attempts/logs/003_%j.err
 
@@ -17,5 +18,5 @@ echo "========== BASELINE (50 runs) =========="
 python attempts/baseline_50runs.py
 
 echo ""
-echo "========== ATTEMPT 003: MuonH LR+Mom Sweep (12 configs x 50 runs) =========="
+echo "========== ATTEMPT 003: LR+Mom Sweep =========="
 python attempts/attempt_003_muonh_lr_sweep.py
