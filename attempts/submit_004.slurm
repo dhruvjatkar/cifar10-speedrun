@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=cifar10-004
-#SBATCH --partition=gpu-short
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:a100:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
