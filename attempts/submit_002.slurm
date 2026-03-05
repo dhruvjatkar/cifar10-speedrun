@@ -5,7 +5,6 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=00:20:00
-#SBATCH --exclusive
 #SBATCH --output=attempts/logs/002_%j.out
 #SBATCH --error=attempts/logs/002_%j.err
 
