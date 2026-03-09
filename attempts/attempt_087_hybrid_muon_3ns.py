@@ -34,18 +34,30 @@ POLAR_C = 2.0843
 
 
 @torch.compile(fullgraph=True, mode="max-autotune")
-def _wide_polar_fast(X: torch.Tensor) -> torch.Tensor:
+def _wide_polar_fast(
+    X: torch.Tensor,
+    current_step: int,
+    total_steps: int,
+) -> torch.Tensor:
     # X: [B, D, K]
-    # 1) row preconditioner (cheap spectrum flattening)
     eps = 1e-6
+
+    # 1) target magnitude scheduling (same as baseline)
+    progress = current_step / max(1, total_steps)
+    initial_mag = 0.5012
+    final_mag = 0.0786
+    target_mag = initial_mag * (1 - progress) + final_mag * progress
+
+    # 2) row preconditioner (cheap spectrum flattening)
     row_norm_sq = X.square().sum(dim=2, keepdim=True).clamp_min(eps)
     X = X * row_norm_sq.rsqrt()
 
-    # 2) global Frobenius normalization for stable polynomial iteration
-    fro = X.square().sum(dim=(1, 2), keepdim=True).clamp_min(eps).sqrt()
-    X = X / fro
+    # 3) scale to target magnitude + Frobenius normalize for stable iteration
+    fro = X.norm(dim=(1, 2), keepdim=True)
+    X = X * (target_mag / (fro + eps))
+    X = X / (X.norm(dim=(1, 2), keepdim=True) + eps)
 
-    # 3) three fast polynomial polar steps (same as baseline)
+    # 4) three fast polynomial polar steps
     A = X @ X.transpose(1, 2)
     B = POLAR_B * A + POLAR_C * (A @ A)
     X = POLAR_A * X + B @ X
@@ -173,7 +185,7 @@ class HybridMuonCIFAR(torch.optim.Optimizer):
             if not active:
                 continue
 
-            Y = _wide_polar_fast(batch)
+            Y = _wide_polar_fast(batch, self.step_count, self.total_train_steps)
 
             for i, p, K, original_shape in active:
                 if decay != 1.0:
