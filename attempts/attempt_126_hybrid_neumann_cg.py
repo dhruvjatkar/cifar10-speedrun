@@ -248,25 +248,92 @@ def _get_resolvent_quadrature(num_terms: int, device, dtype):
 
 
 @torch.compile(fullgraph=True)
-def _zeropower_via_resolvents_compiled(
-    gradients_4d: list[torch.half],
-    filter_meta_data: list[tuple],
-    max_D: int,
-    max_K: int,
+def _neumann_resolvent_compiled(
+    X_fp32: torch.Tensor,
+    gram_scaled: torch.Tensor,
     shifts: torch.Tensor,
     weights: torch.Tensor,
-    ridge_epsilon: float,
-    cg_iters: int,
     neumann_iters: int,
-    shift_threshold: float,
-) -> list[torch.half]:
-    """Hybrid Neumann+CG compiled resolvent orthogonalizer.
-    Large shifts (σ > threshold): Neumann series in FP16 (fast).
-    Small shifts (σ ≤ threshold): CG in FP32 (stable).
-    """
+) -> torch.Tensor:
+    """Neumann series resolvent for large shifts — runs in FP16 for speed."""
+    B, D, K = X_fp32.shape
+    num_terms = shifts.shape[0]
+    X_h = X_fp32.half()
+    gram_h = gram_scaled.half()
+    result = torch.zeros(B, D, K, device=X_fp32.device, dtype=torch.float32)
+    for t in range(num_terms):
+        sigma = shifts[t]
+        w = weights[t]
+        neg_A_over_sigma = -gram_h / sigma
+        # Horner's method: (1/σ)(I + (-A/σ)(I + (-A/σ)(...)))X
+        Y_h = X_h
+        for _ in range(neumann_iters):
+            Y_h = X_h + neg_A_over_sigma @ Y_h
+        Y_h = Y_h / sigma
+        result = result + w * Y_h.float()
+    return result
+
+
+@torch.compile(fullgraph=True)
+def _cg_resolvent_compiled(
+    X_fp32: torch.Tensor,
+    gram_scaled: torch.Tensor,
+    shifts: torch.Tensor,
+    weights: torch.Tensor,
+    cg_iters: int,
+) -> torch.Tensor:
+    """CG resolvent for small shifts — runs in FP32 for stability."""
+    B, D, K = X_fp32.shape
+    num_terms = shifts.shape[0]
+    eye = torch.eye(D, device=X_fp32.device, dtype=X_fp32.dtype).unsqueeze(0)
+    # Build all shifted systems: (B*T, D, D)
+    A_all = gram_scaled.unsqueeze(1) + shifts.view(1, -1, 1, 1) * eye.unsqueeze(0)
+    A_all = A_all.reshape(B * num_terms, D, D)
+    # Expand X: (B*T, D, K)
+    X_exp = X_fp32.unsqueeze(1).expand(B, num_terms, D, K).reshape(B * num_terms, D, K)
+    # Warm-start CG
+    sigma_exp = shifts.repeat(B).view(B * num_terms, 1, 1)
+    Y = X_exp / (sigma_exp + 1.0)
+    R = X_exp - A_all @ Y
+    P = R.clone()
+    rr = (R * R).sum(dim=-2)
+    for _ in range(cg_iters):
+        AP = A_all @ P
+        pAp = (P * AP).sum(dim=-2).clamp_min(1e-30)
+        alpha = rr / pAp
+        Y = Y + alpha.unsqueeze(-2) * P
+        R = R - alpha.unsqueeze(-2) * AP
+        rr_new = (R * R).sum(dim=-2)
+        beta = rr_new / rr.clamp_min(1e-30)
+        P = R + beta.unsqueeze(-2) * P
+        rr = rr_new
+    # Weighted sum
+    Y = Y.view(B, num_terms, D, K)
+    return (Y * weights.view(1, num_terms, 1, 1)).sum(dim=1)
+
+
+def _zeropower_via_resolvents(
+    gradients_4d, filter_meta_data, max_D, max_K, num_terms, ridge_epsilon,
+    cg_iters=DEFAULT_CG_ITERS, neumann_iters=DEFAULT_NEUMANN_ITERS,
+    shift_threshold=1.0,
+):
+    """Wrapper: splits shifts into Neumann (large) and CG (small), calls compiled kernels."""
     if not filter_meta_data:
         return gradients_4d
 
+    shifts_all, weights_all = _get_resolvent_quadrature(
+        num_terms, gradients_4d[0].device, torch.float32
+    )
+
+    # Split into large/small shifts (Python-level, not in compiled graph)
+    large_mask = shifts_all > shift_threshold
+    small_mask = ~large_mask
+    shifts_large = shifts_all[large_mask]
+    weights_large = weights_all[large_mask]
+    shifts_small = shifts_all[small_mask]
+    weights_small = weights_all[small_mask]
+
+    # Pad and stack gradients
     grad_list = []
     for meta in filter_meta_data:
         original_shape, reshaped_D, reshaped_K, list_idx = meta
@@ -275,9 +342,6 @@ def _zeropower_via_resolvents_compiled(
         padding_dims = (0, max_K - reshaped_K, 0, max_D - reshaped_D)
         grad_list.append(F.pad(g_reshaped, padding_dims, "constant", 0))
 
-    if not grad_list:
-        return gradients_4d
-
     X_fp32 = torch.stack(grad_list).float()
     transposed = False
     if X_fp32.size(1) > X_fp32.size(2):
@@ -285,55 +349,27 @@ def _zeropower_via_resolvents_compiled(
         transposed = True
 
     B, D, K = X_fp32.shape
-    num_terms = shifts.shape[0]
 
-    # Gram matrix + normalization (FP32 for precision)
+    # Gram matrix + normalization
     gram = X_fp32 @ X_fp32.transpose(1, 2)
-    eye_fp32 = torch.eye(D, device=gram.device, dtype=gram.dtype).unsqueeze(0)
+    eye = torch.eye(D, device=gram.device, dtype=gram.dtype).unsqueeze(0)
     gram_scale = gram.diagonal(dim1=-2, dim2=-1).mean(dim=-1).clamp_min(1e-8)
     gram_scaled = gram / gram_scale.view(-1, 1, 1)
-    gram_scaled = gram_scaled + ridge_epsilon * eye_fp32
+    gram_scaled = gram_scaled + ridge_epsilon * eye
 
-    # Accumulate result
     result = torch.zeros_like(X_fp32)
 
-    # Process each term with appropriate method
-    for t in range(num_terms):
-        sigma = shifts[t]
-        w = weights[t]
+    # Neumann path (FP16, large shifts)
+    if shifts_large.numel() > 0:
+        result = result + _neumann_resolvent_compiled(
+            X_fp32, gram_scaled, shifts_large, weights_large, neumann_iters
+        )
 
-        if sigma > shift_threshold:
-            # --- Neumann series in FP16 (fast path) ---
-            # (A + σI)^{-1}X ≈ (1/σ) Σ_{k=0}^{K} (-A_scaled/σ)^k X
-            # where A_scaled = gram_scaled (eigenvalues ≈ 1)
-            X_h = X_fp32.half()
-            gram_h = gram_scaled.half()
-            neg_A_over_sigma = -gram_h / sigma  # eigenvalues ≈ -1/σ, small for large σ
-            # Horner's method: Y = (1/σ) * (I + (-A/σ)(I + (-A/σ)(I + ...)))X
-            Y_h = X_h  # innermost: I*X
-            for _ in range(neumann_iters):
-                Y_h = X_h + neg_A_over_sigma @ Y_h  # Y = X + (-A/σ) @ Y_prev
-            Y_h = Y_h / sigma  # multiply by 1/σ
-            result = result + w * Y_h.float()
-        else:
-            # --- CG in FP32 (stable path for small shifts) ---
-            A = gram_scaled + sigma * eye_fp32
-            # Warm-start: Y0 = X / (σ + 1)
-            Y = X_fp32 / (sigma + 1.0)
-            R = X_fp32 - A @ Y
-            P = R.clone()
-            rr = (R * R).sum(dim=-2)
-            for _ in range(cg_iters):
-                AP = A @ P
-                pAp = (P * AP).sum(dim=-2).clamp_min(1e-30)
-                alpha = rr / pAp
-                Y = Y + alpha.unsqueeze(-2) * P
-                R = R - alpha.unsqueeze(-2) * AP
-                rr_new = (R * R).sum(dim=-2)
-                beta = rr_new / rr.clamp_min(1e-30)
-                P = R + beta.unsqueeze(-2) * P
-                rr = rr_new
-            result = result + w * Y
+    # CG path (FP32, small shifts)
+    if shifts_small.numel() > 0:
+        result = result + _cg_resolvent_compiled(
+            X_fp32, gram_scaled, shifts_small, weights_small, cg_iters
+        )
 
     orthogonalized = result / gram_scale.sqrt().view(-1, 1, 1)
 
@@ -349,22 +385,6 @@ def _zeropower_via_resolvents_compiled(
             original_shape
         )
     return final_orthogonalized_grads_list
-
-
-def _zeropower_via_resolvents(
-    gradients_4d, filter_meta_data, max_D, max_K, num_terms, ridge_epsilon,
-    cg_iters=DEFAULT_CG_ITERS, neumann_iters=DEFAULT_NEUMANN_ITERS,
-    shift_threshold=1.0,
-):
-    """Wrapper that fetches quadrature and calls compiled function."""
-    shifts, weights = _get_resolvent_quadrature(
-        num_terms, gradients_4d[0].device, torch.float32
-    )
-    return _zeropower_via_resolvents_compiled(
-        gradients_4d, filter_meta_data, max_D, max_K,
-        shifts, weights, ridge_epsilon, cg_iters,
-        neumann_iters, shift_threshold,
-    )
 
 
 @torch.no_grad()
