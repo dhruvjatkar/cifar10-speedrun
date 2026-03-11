@@ -315,7 +315,7 @@ def _cg_resolvent_compiled(
 def _zeropower_via_resolvents(
     gradients_4d, filter_meta_data, max_D, max_K, num_terms, ridge_epsilon,
     cg_iters=DEFAULT_CG_ITERS, neumann_iters=DEFAULT_NEUMANN_ITERS,
-    shift_threshold=1.0,
+    shift_threshold=100.0,
 ):
     """Wrapper: splits shifts into Neumann (large) and CG (small), calls compiled kernels."""
     if not filter_meta_data:
@@ -467,7 +467,7 @@ class Muon(torch.optim.Optimizer):
         resolvent_ridge=DEFAULT_RESOLVENT_RIDGE,
         cg_iters=DEFAULT_CG_ITERS,
         neumann_iters=DEFAULT_NEUMANN_ITERS,
-        shift_threshold=1.0,
+        shift_threshold=100.0,
     ):
         if orthogonalization_backend not in {"newtonschulz", "resolvent"}:
             raise ValueError(
@@ -991,7 +991,7 @@ def main(
     resolvent_ridge=DEFAULT_RESOLVENT_RIDGE,
     cg_iters=DEFAULT_CG_ITERS,
     neumann_iters=DEFAULT_NEUMANN_ITERS,
-    shift_threshold=1.0,
+    shift_threshold=100.0,
 ):
     training_batch_size = 1536
     bias_lr = 0.0573
