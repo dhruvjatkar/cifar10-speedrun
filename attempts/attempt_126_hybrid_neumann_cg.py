@@ -1172,7 +1172,7 @@ def parse_args():
     parser.add_argument(
         "--shift-threshold",
         type=float,
-        default=1.0,
+        default=100.0,
     )
     parser.add_argument(
         "--validate-orthogonalizer",
