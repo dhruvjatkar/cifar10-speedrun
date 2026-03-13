@@ -184,7 +184,7 @@ CIFAR_STD = torch.tensor((0.2470, 0.2435, 0.2616), device="cuda", dtype=torch.fl
 
 @torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def normalize_images(images: torch.Tensor) -> torch.Tensor:
-    return (images - CIFAR_MEAN) / CIFAR_STD
+    return ((images - CIFAR_MEAN) / CIFAR_STD).clone()
 
 
 @torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
@@ -439,7 +439,7 @@ def infer_basic_batch(model: nn.Module, inputs: torch.Tensor):
 
 @torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def infer_mirror_batch(model: nn.Module, inputs: torch.Tensor):
-    return 0.5 * model(inputs) + 0.5 * model(inputs.flip(-1))
+    return (0.5 * model(inputs) + 0.5 * model(inputs.flip(-1))).clone()
 
 
 @torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
@@ -450,7 +450,7 @@ def tta_logits_batch(model: nn.Module, images_batch: torch.Tensor):
     base_views = torch.cat((images_batch, crop_tl, crop_br), dim=0)
     combined_inputs = torch.cat((base_views, base_views.flip(-1)), dim=0)
     combined_logits = model(combined_inputs)
-    return combined_logits.view(6, images_batch.shape[0], -1).mean(dim=0)
+    return combined_logits.view(6, images_batch.shape[0], -1).mean(dim=0).clone()
 
 #############################################
 #              Muon optimizer               #
