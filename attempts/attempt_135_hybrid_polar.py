@@ -72,14 +72,8 @@ def _hybrid_polar_bucket(
     # Small extra ridge helps padded zero rows and the earliest steps.
     ridge = 2.5e-4 * (1.0 - progress_ratio) + 1.0e-5
 
-    Z1 = torch.cholesky_solve(
-        I,
-        torch.linalg.cholesky(A + (s1 + ridge) * I),
-    )
-    Z2 = torch.cholesky_solve(
-        I,
-        torch.linalg.cholesky(A + (s2 + ridge) * I),
-    )
+    Z1 = torch.linalg.solve(A + (s1 + ridge) * I, I)
+    Z2 = torch.linalg.solve(A + (s2 + ridge) * I, I)
 
     H = m0 * I + w1 * Z1 + w2 * Z2
     X = (H @ Xf).to(orig_dtype)
