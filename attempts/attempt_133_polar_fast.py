@@ -20,7 +20,7 @@ torch.set_float32_matmul_precision("high")
 # ------------------------------
 # Config knobs for direct A/Bs.
 # ------------------------------
-ORTHO_IMPL = os.environ.get("ORTHO_IMPL", "polar_express_fast")
+ORTHO_IMPL = os.environ.get("ORTHO_IMPL", "legacy_fast")
 # Options:
 #   legacy_fast         -> same odd polynomial family as your current script, but without
 #                          cross-shape padding and with the rectangular fast-path.
