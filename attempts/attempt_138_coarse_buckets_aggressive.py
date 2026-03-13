@@ -707,7 +707,7 @@ def infer(model, loader, tta_level=0):
                     images_batch.contiguous(memory_format=torch.channels_last),
                     pad,
                 )
-                tta_logits_parts.append(logits_batch)
+                tta_logits_parts.append(logits_batch.clone())
 
             if tta_logits_parts:
                 all_tta_logits_for_uncertain = torch.cat(tta_logits_parts, dim=0)
