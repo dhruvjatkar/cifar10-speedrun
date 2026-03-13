@@ -136,14 +136,14 @@ def _poly_fast_wide_impl(
     return X
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _legacy_direct(X: torch.Tensor):
     # The original script's two-stage magnitude normalization collapses algebraically
     # to a single norm-normalization up to the added eps terms, so we use the simpler form.
     return _poly_direct_impl(X, LEGACY_COEFFS, norm_mul=1.0, eps=1e-6)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _legacy_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
@@ -155,12 +155,12 @@ def _legacy_fast_wide(X: torch.Tensor):
     )
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _cans_direct(X: torch.Tensor):
     return _poly_direct_impl(X, CANS5_COEFFS, norm_mul=1.0, eps=1e-6)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _cans_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
@@ -172,12 +172,12 @@ def _cans_fast_wide(X: torch.Tensor):
     )
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _polar_express_direct(X: torch.Tensor):
     return _poly_direct_impl(X, POLAR_EXPRESS_COEFFS, norm_mul=1.01, eps=1e-7)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def _polar_express_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
@@ -226,12 +226,12 @@ CIFAR_MEAN = torch.tensor((0.4914, 0.4822, 0.4465), device="cuda", dtype=torch.f
 CIFAR_STD = torch.tensor((0.2470, 0.2435, 0.2616), device="cuda", dtype=torch.float16).view(1, 3, 1, 1)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def normalize_images(images: torch.Tensor) -> torch.Tensor:
     return (images - CIFAR_MEAN) / CIFAR_STD
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def batch_color_jitter(inputs: torch.Tensor, brightness_range: float, contrast_range: float):
     b = inputs.shape[0]
     brightness_shift = (
@@ -243,13 +243,13 @@ def batch_color_jitter(inputs: torch.Tensor, brightness_range: float, contrast_r
     return (inputs + brightness_shift) * contrast_scale
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def batch_flip_lr(inputs: torch.Tensor):
     flip_mask = (torch.rand(len(inputs), device=inputs.device) < 0.5).view(-1, 1, 1, 1)
     return torch.where(flip_mask, inputs.flip(-1), inputs)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def batch_crop(images: torch.Tensor, crop_size: int):
     b, c, h_padded, _ = images.shape
     span = h_padded - crop_size + 1
@@ -470,23 +470,23 @@ def print_training_details(variables, is_final_entry):
 #         Top-level compiled helpers       #
 ############################################
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def forward_step(model: nn.Module, inputs: torch.Tensor, labels: torch.Tensor, whiten_bias_grad: bool):
     outputs = model(inputs, whiten_bias_grad=whiten_bias_grad)
     return F.cross_entropy(outputs, labels, label_smoothing=0.09, reduction="sum")
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def infer_basic_batch(model: nn.Module, inputs: torch.Tensor):
     return model(inputs)
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def infer_mirror_batch(model: nn.Module, inputs: torch.Tensor):
     return 0.5 * model(inputs) + 0.5 * model(inputs.flip(-1))
 
 
-@torch.compile(fullgraph=True)
+# @torch.compile(fullgraph=True)  # DISABLED for debugging
 def tta_logits_batch(model: nn.Module, images_batch: torch.Tensor):
     padded_inputs = F.pad(images_batch, (TTA_PAD,) * 4, "reflect")
     crop_tl = padded_inputs[:, :, 0:32, 0:32]
