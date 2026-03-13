@@ -470,7 +470,7 @@ def print_training_details(variables, is_final_entry):
 #         Top-level compiled helpers       #
 ############################################
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def forward_step(model: nn.Module, inputs: torch.Tensor, labels: torch.Tensor, whiten_bias_grad: bool):
     outputs = model(inputs, whiten_bias_grad=whiten_bias_grad)
     return F.cross_entropy(outputs, labels, label_smoothing=0.09, reduction="sum")
