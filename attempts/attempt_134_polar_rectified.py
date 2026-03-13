@@ -136,14 +136,14 @@ def _poly_fast_wide_impl(
     return X
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _legacy_direct(X: torch.Tensor):
     # The original script's two-stage magnitude normalization collapses algebraically
     # to a single norm-normalization up to the added eps terms, so we use the simpler form.
     return _poly_direct_impl(X, LEGACY_COEFFS, norm_mul=1.0, eps=1e-6)
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _legacy_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
@@ -155,12 +155,12 @@ def _legacy_fast_wide(X: torch.Tensor):
     )
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _cans_direct(X: torch.Tensor):
     return _poly_direct_impl(X, CANS5_COEFFS, norm_mul=1.0, eps=1e-6)
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _cans_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
@@ -172,12 +172,12 @@ def _cans_fast_wide(X: torch.Tensor):
     )
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _polar_express_direct(X: torch.Tensor):
     return _poly_direct_impl(X, POLAR_EXPRESS_COEFFS, norm_mul=1.01, eps=1e-7)
 
 
-@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
+@torch.compile(fullgraph=True)
 def _polar_express_fast_wide(X: torch.Tensor):
     return _poly_fast_wide_impl(
         X,
