@@ -182,12 +182,12 @@ CIFAR_MEAN = torch.tensor((0.4914, 0.4822, 0.4465), device="cuda", dtype=torch.f
 CIFAR_STD = torch.tensor((0.2470, 0.2435, 0.2616), device="cuda", dtype=torch.float16).view(1, 3, 1, 1)
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def normalize_images(images: torch.Tensor) -> torch.Tensor:
     return (images - CIFAR_MEAN) / CIFAR_STD
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def batch_color_jitter(inputs: torch.Tensor, brightness_range: float, contrast_range: float):
     b = inputs.shape[0]
     brightness_shift = (
@@ -199,13 +199,13 @@ def batch_color_jitter(inputs: torch.Tensor, brightness_range: float, contrast_r
     return (inputs + brightness_shift) * contrast_scale
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def batch_flip_lr(inputs: torch.Tensor):
     flip_mask = (torch.rand(len(inputs), device=inputs.device) < 0.5).view(-1, 1, 1, 1)
     return torch.where(flip_mask, inputs.flip(-1), inputs)
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def batch_crop(images: torch.Tensor, crop_size: int):
     b, c, h_padded, _ = images.shape
     span = h_padded - crop_size + 1
@@ -254,7 +254,7 @@ class CifarLoader:
     @property
     def norm_images(self):
         if self._norm_images is None:
-            self._norm_images = normalize_images(self.images)
+            self._norm_images = normalize_images(self.images).clone()  # clone outside compile to avoid cudagraph output reuse
         return self._norm_images
 
     def __iter__(self):
@@ -432,17 +432,17 @@ def forward_step(model: nn.Module, inputs: torch.Tensor, labels: torch.Tensor, w
     return F.cross_entropy(outputs, labels, label_smoothing=0.09, reduction="sum")
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def infer_basic_batch(model: nn.Module, inputs: torch.Tensor):
     return model(inputs)
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def infer_mirror_batch(model: nn.Module, inputs: torch.Tensor):
     return 0.5 * model(inputs) + 0.5 * model(inputs.flip(-1))
 
 
-@torch.compile(dynamic=False, fullgraph=True)
+@torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
 def tta_logits_batch(model: nn.Module, images_batch: torch.Tensor):
     padded_inputs = F.pad(images_batch, (TTA_PAD,) * 4, "reflect")
     crop_tl = padded_inputs[:, :, 0:32, 0:32]
@@ -581,7 +581,7 @@ def infer(model, loader, tta_level=0):
         if tta_level == 0:
             return torch.cat(
                 [
-                    infer_basic_batch(model, inputs.contiguous(memory_format=torch.channels_last))
+                    infer_basic_batch(model, inputs.contiguous(memory_format=torch.channels_last)).clone()
                     for inputs in test_images.split(EVAL_BATCH_SIZE)
                 ],
                 dim=0,
@@ -590,7 +590,7 @@ def infer(model, loader, tta_level=0):
         if tta_level == 1:
             return torch.cat(
                 [
-                    infer_mirror_batch(model, inputs.contiguous(memory_format=torch.channels_last))
+                    infer_mirror_batch(model, inputs.contiguous(memory_format=torch.channels_last)).clone()
                     for inputs in test_images.split(EVAL_BATCH_SIZE)
                 ],
                 dim=0,
@@ -598,7 +598,7 @@ def infer(model, loader, tta_level=0):
 
         initial_logits = torch.cat(
             [
-                infer_basic_batch(model, inputs.contiguous(memory_format=torch.channels_last))
+                infer_basic_batch(model, inputs.contiguous(memory_format=torch.channels_last)).clone()
                 for inputs in test_images.split(EVAL_BATCH_SIZE)
             ],
             dim=0,
@@ -611,7 +611,7 @@ def infer(model, loader, tta_level=0):
         final_logits = initial_logits.clone()
         for batch_indices in uncertain_indices.split(TTA_BATCH_SIZE):
             batch_images = test_images[batch_indices].contiguous(memory_format=torch.channels_last)
-            final_logits[batch_indices] = tta_logits_batch(model, batch_images)
+            final_logits[batch_indices] = tta_logits_batch(model, batch_images).clone()
         return final_logits
 
 
