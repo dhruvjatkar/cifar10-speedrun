@@ -31,7 +31,7 @@ EVAL_BATCH_SIZE = int(os.environ.get("EVAL_BATCH_SIZE", "10000"))
 TTA_BATCH_SIZE = int(os.environ.get("TTA_BATCH_SIZE", "2500"))
 TTA_UNCERTAIN_QUANTILE = 0.25
 TTA_PAD = 1
-ORTHO_DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+ORTHO_DTYPE = torch.float16  # bf16 has insufficient mantissa precision for PE coefficients
 FAST_RECT_RESTART = int(os.environ.get("FAST_RECT_RESTART", "3"))
 FAST_RECT_FIRST_SHIFT = float(os.environ.get("FAST_RECT_FIRST_SHIFT", "0.0"))
 POLAR_FAST_FALLBACK_TO_DIRECT = os.environ.get("POLAR_FAST_FALLBACK_TO_DIRECT", "0") == "1"
