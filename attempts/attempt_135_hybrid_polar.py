@@ -25,7 +25,7 @@ torch.set_float32_matmul_precision("high")
 
 HYBRID_WARM_STEPS = 1  # A100-fast. Set to 2 if you want the safer/slower version.
 
-@torch.compile(mode="max-autotune", fullgraph=False)
+@torch.compile(fullgraph=False)
 def _hybrid_polar_bucket(
     X: torch.Tensor,              # [B, D, K], padded inside a shape bucket
     progress_ratio: torch.Tensor, # scalar tensor on CUDA, avoids recompiling every step
