@@ -83,37 +83,43 @@ def _poly_direct_impl(X: torch.Tensor, coeffs: tuple[tuple[float, float, float],
     return X
 
 
-def _poly_fast_wide_impl(X: torch.Tensor, coeffs: tuple[tuple[float, float, float], ...], norm_mul: float, eps: float):
+def _poly_fast_wide_impl(
+    X: torch.Tensor,
+    coeffs: tuple[tuple[float, float, float], ...],
+    norm_mul: float,
+    eps: float,
+    restart_interval: int = 3,
+    first_pass_eps: float = 1e-3,
+):
     """
-    Fast rectangular polynomial iteration for wide matrices.
-
-    For wide X (M <= N), any odd polynomial p(x) = x h(x^2) can be applied as
-        p(X) = h(XX^T) X.
-
-    Instead of paying for a wide rectangular multiply every iteration, we keep a left-side
-    polynomial factor P_t in the small M x M space and do only:
-        1) one initial XX^T,
-        2) square matmuls in the loop,
-        3) one final P_T X.
-
-    This is the wide-matrix analogue of the Polar Express fast rectangular iteration.
+    Stable fast rectangular iteration for wide matrices.
+    Applies the fast small-side factorization in chunks, restarting every
+    `restart_interval` polynomials (paper Appendix F recommendation).
     """
     X = X.to(ORTHO_DTYPE)
-    X = X / (X.norm(dim=(-2, -1), keepdim=True) * norm_mul + eps)
 
-    Y = X @ X.transpose(-1, -2)
-    batch_size, m, _ = Y.shape
-    eye = torch.eye(m, device=X.device, dtype=X.dtype).unsqueeze(0).expand(batch_size, m, m)
-    P = eye.clone()
+    # Paper's first-pass stabilization: larger norm epsilon.
+    X = X / (X.norm(dim=(-2, -1), keepdim=True) * norm_mul + first_pass_eps)
 
-    for a, b, c in coeffs:
-        R = P @ Y
-        R = R @ P
-        RP = R @ P
-        R2P = R @ RP
-        P = a * P + b * RP + c * R2P
+    for start in range(0, len(coeffs), restart_interval):
+        chunk = coeffs[start : start + restart_interval]
 
-    return P @ X
+        Y = X @ X.transpose(-1, -2)
+        batch_size, m, _ = Y.shape
+        I = torch.eye(m, device=X.device, dtype=X.dtype).unsqueeze(0).expand(batch_size, m, m)
+
+        # Paper's first rectangular-pass stabilization.
+        if start == 0:
+            Y = Y + first_pass_eps * I
+
+        P = I.clone()
+        for a, b, c in chunk:
+            R = P @ Y @ P.transpose(-1, -2)
+            P = a * P + b * (R @ P) + c * ((R @ R) @ P)
+
+        X = P @ X
+
+    return X
 
 
 @torch.compile(mode="max-autotune", dynamic=False, fullgraph=True)
@@ -158,8 +164,12 @@ def orthogonalize_batch(G: torch.Tensor, impl: str) -> torch.Tensor:
     transposed = G.size(-2) > G.size(-1)
     X = G.transpose(-1, -2) if transposed else G
 
-    # Use the fast rectangular path only when the aspect ratio is large enough to justify it.
-    use_fast = 2 * X.size(-1) >= 3 * X.size(-2)
+    # Paper-consistent threshold: alpha > 1.5 * T / (T - 1).
+    # For T=3 (legacy): 8N > 15M is alpha > 1.875 (but legacy uses 3 identical polys so T=3).
+    # For T=5 (polar express): 8N > 15M is alpha > 1.875.
+    # For T=4 (CANS): 6N > 12M is alpha > 2.0.
+    # Conservative: use 8N > 15M for all.
+    use_fast = 8 * X.size(-1) > 15 * X.size(-2)
 
     if impl == "legacy_fast":
         X = _legacy_fast_wide(X) if use_fast else _legacy_direct(X)
@@ -682,7 +692,7 @@ def main(run, model):
         ortho_impl=ORTHO_IMPL,
         preserve_legacy_param_renorm=True,
     )
-    optimizer2.param_groups[0]["momentum_buffer_dtype"] = torch.float16
+    optimizer2.param_groups[0]["momentum_buffer_dtype"] = ORTHO_DTYPE
 
     optimizers = [optimizer1, optimizer2]
     for opt in optimizers:
