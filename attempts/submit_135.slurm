@@ -12,7 +12,7 @@ set -euo pipefail
 
 module load miniconda3/25.9.1
 eval "$(conda shell.bash hook)"
-conda activate /home/d.jatkar/.conda/envs/torch241_bench
+conda activate /projects/Sontag_Lab_Storage/torch26_bench
 cd /projects/Sontag_Lab_Storage/cifar10-speedrun
 
 COOLDOWN_SECONDS=60
