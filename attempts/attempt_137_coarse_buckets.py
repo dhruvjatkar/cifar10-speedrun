@@ -34,7 +34,7 @@ def _ns5_bucket_cost(max_D: int, max_K: int, count: int) -> int:
     return count * (4 * max_D * max_D * max_K + 2 * max_D * max_D * max_D)
 
 
-@torch.compile(fullgraph=True, mode="reduce-overhead")
+@torch.compile(fullgraph=True, mode="max-autotune")
 def _zeropower_via_newtonschulz5_bucket(
     X: torch.Tensor,
     current_step: int,
@@ -564,7 +564,7 @@ def print_training_details(variables, is_final_entry):
 #               Evaluation                 #
 ############################################
 
-@torch.compile(fullgraph=True, mode="reduce-overhead")
+@torch.compile(fullgraph=True, mode="max-autotune")
 def _get_tta_logits(model, images_batch, pad):
     batch_size = images_batch.shape[0]
     padded_inputs = F.pad(images_batch, (pad,) * 4, "reflect")
