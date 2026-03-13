@@ -168,8 +168,8 @@ def orthogonalize_batch(G: torch.Tensor, impl: str) -> torch.Tensor:
     # For T=3 (legacy): 8N > 15M is alpha > 1.875 (but legacy uses 3 identical polys so T=3).
     # For T=5 (polar express): 8N > 15M is alpha > 1.875.
     # For T=4 (CANS): 6N > 12M is alpha > 2.0.
-    # Conservative: use 8N > 15M for all.
-    use_fast = 8 * X.size(-1) > 15 * X.size(-2)
+    # TEMPORARILY DISABLED: force direct path to verify correctness
+    use_fast = False
 
     if impl == "legacy_fast":
         X = _legacy_fast_wide(X) if use_fast else _legacy_direct(X)
